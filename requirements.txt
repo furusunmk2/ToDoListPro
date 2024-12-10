@@ -1,6 +1,5 @@
-flask
+Flask
 line-bot-sdk
-gunicorn
 python-dotenv
 google-generativeai
-gunicorn
+
