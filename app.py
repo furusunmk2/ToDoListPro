@@ -68,32 +68,49 @@ def handle_message(event):
     user_id = event.source.user_id  # ユーザーIDを取得
     response_text = ""
 
-   
-    # DatetimePickerアクションの作成
-    datetime_picker_action = DatetimePickerTemplateAction(
-        label="Select date",
-        data="storeId=12345",
-        mode="datetime",
-        initial="2017-12-25T00:00",
-        max="2018-01-24T23:59",
-        min="2017-12-25T00:00"
-    )
-
-    # ボタンテンプレートメッセージの作成
-    template_message = TemplateSendMessage(
-        alt_text="日時選択メッセージ",
-        template=ButtonsTemplate(
-            text="日時を選んでください",
-            actions=[datetime_picker_action]
+    if "スケジュール" in user_message:  # スケジュール作成を希望する場合
+        # DatetimePickerアクションの作成
+        datetime_picker_action = DatetimePickerTemplateAction(
+            label="Select date",
+            data="storeId=12345",
+            mode="datetime",
+            initial="2024-12-25T00:00",
+            max="2025-01-01T23:59",
+            min="2024-12-25T00:00"
         )
-    )
 
-    # メッセージを送信
-    try:
-        line_bot_api.push_message(user_id, template_message)
-        print(f"Datetime picker message sent to user: {user_id}")
-    except Exception as e:
-        print(f"Error while sending datetime picker message: {e}")
+        # ボタンテンプレートメッセージの作成
+        template_message = TemplateSendMessage(
+            alt_text="日時選択メッセージ",
+            template=ButtonsTemplate(
+                text="日時を選んでください",
+                actions=[datetime_picker_action]
+            )
+        )
+
+        # メッセージを送信
+        try:
+            line_bot_api.push_message(user_id, template_message)
+            print(f"Datetime picker message sent to user: {user_id}")
+        except Exception as e:
+            print(f"Error while sending datetime picker message: {e}")
+
+@handler.add(MessageEvent, message=TextMessage)
+def handle_postback(event):
+    # ユーザーが選んだ日時を受け取る
+    if event.postback.data:
+        # event.postback.dataから選択した日時情報を取得
+        schedule_datetime = event.postback.data.split("=")[-1]
+
+        # ユーザーに選択されたスケジュール日時を通知
+        message = TextSendMessage(text=f"あなたが選択した日時は {schedule_datetime} です。")
+
+        # メッセージを送信
+        try:
+            line_bot_api.reply_message(event.reply_token, message)
+            print(f"Sent schedule confirmation message: {schedule_datetime}")
+        except Exception as e:
+            print(f"Error while sending confirmation message: {e}")
 
 if __name__ == "__main__":
     port = int(os.getenv("PORT", 5000))
