@@ -68,42 +68,7 @@ def handle_message(event):
     user_id = event.source.user_id  # ユーザーIDを取得
     response_text = ""
 
-    # プロンプトの設定（敬語変換）
-    prompt = f"""以下の文章を敬語表現に変換してください。
-元の文章:
-{user_message}
-敬語表現:
-"""
-    print(f"Generated Prompt: {prompt}")
-
-    # Google Generative AIを使用して応答を生成
-    try:
-        if gemini_pro:
-            response = gemini_pro.generate_content(prompt)
-            print(f"GenerateContentResponse: {response}")
-
-            if response and response.candidates:
-                response_text = response.candidates[0]["output"]  # 最初の候補のテキスト
-            else:
-                response_text = "敬語変換ができませんでした。"
-        else:
-            response_text = "AIサービスが利用できません。"
-    except Exception as e:
-        print(f"Error during AI content generation: {e}")
-        response_text = f"エラーが発生しました: {str(e)}"
-
-    # 応答をユーザーに送信
-    print(f"Final Response Text: {response_text}")
-    line_bot_api.reply_message(
-        event.reply_token,
-        TextSendMessage(text=response_text)
-    )
-
-    # ユーザーに日時選択ボタンを送信
-    send_datetimepicker_message(user_id)
-
-# Send a datetime picker message
-def send_datetimepicker_message(user_id):
+   
     # DatetimePickerアクションの作成
     datetime_picker_action = DatetimePickerTemplateAction(
         label="Select date",
