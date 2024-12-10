@@ -3,4 +3,5 @@ line-bot-sdk
 python-dotenv
 google-generativeai
 google-api-core==2.24.0
+gunicorn
 
