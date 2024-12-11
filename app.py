@@ -9,7 +9,7 @@ from sqlalchemy import create_engine, Column, Integer, String, DateTime, and_
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 from dotenv import load_dotenv
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta,timezone
 import os
 
 # Load .env file
@@ -64,98 +64,78 @@ def handle_message(event):
     user_message = event.message.text.strip()
     user_id = event.source.user_id
 
-    # Calculate datetime values
-    today = datetime.now()
-    initial_date = today.replace(minute=0, second=0).strftime("%Y-%m-%dT%H:%M")
-    max_date = (today + timedelta(days=365)).strftime("%Y-%m-%dT%H:%M")
-    min_date = (today - timedelta(days=365)).strftime("%Y-%m-%dT%H:%M")
+    # If the user asks for schedule confirmation
+    if user_message == "予定確認":
+        # Calculate datetime values
+        JST = timezone(timedelta(hours=9))
+        now_jst = datetime.now(JST)
 
-    datetime_picker_action = DatetimePickerTemplateAction(
-        label="Select date",
-        data=f"action=schedule&user_message={user_message}",
-        mode="datetime",
-        initial=initial_date,
-        max=max_date,
-        min=min_date
-    )
+        today = now_jst
+        initial_date = today.replace(minute=0, second=0).strftime("%Y-%m-%dT%H:%M")
 
-    template_message = TemplateSendMessage(
-        alt_text="日時選択メッセージ",
-        template=ButtonsTemplate(
-            text="日時を選んでください",
-            actions=[datetime_picker_action]
+        # 1年前と1年後の日時
+        min_date = (today - timedelta(days=365)).strftime("%Y-%m-%dT%H:%M")  # 1年前
+        max_date = (today + timedelta(days=365)).strftime("%Y-%m-%dT%H:%M")  # 1年後
+
+        # Show datetime picker for user to select a date
+        datetime_picker_action = DatetimePickerTemplateAction(
+            label="日付を選択",
+            data=f"action=check_schedule&user_id={user_id}",
+            mode="datetime",
+            initial=initial_date,
+            max=max_date,
+            min=min_date
         )
-    )
 
-    try:
-        line_bot_api.push_message(user_id, template_message)
-    except Exception as e:
-        print(f"Error while sending datetime picker message: {e}")
+        template_message = TemplateSendMessage(
+            alt_text="日時選択メッセージ",
+            template=ButtonsTemplate(
+                text="確認したい日のスケジュールを選んでください",
+                actions=[datetime_picker_action]
+            )
+        )
+
+        try:
+            line_bot_api.push_message(user_id, template_message)
+        except Exception as e:
+            print(f"Error while sending datetime picker message: {e}")
+    
+    else:
+        # Handle other messages (e.g., schedule input)
+        # Your input handling logic goes here
+        pass
 
 # Handle Postback events
 @handler.add(PostbackEvent)
 def handle_postback(event):
-    if "action=schedule" in event.postback.data:
-        # Extract user message and datetime
-        data_parts = event.postback.data.split("&")
-        user_message = None
-        for part in data_parts:
-            if part.startswith("user_message="):
-                user_message = part.split("=")[-1]
-        schedule_datetime = event.postback.params.get('datetime', '不明')
+    if "action=check_schedule" in event.postback.data:
+        # Extract the specified date
+        specified_date = event.postback.params.get('datetime', '不明')
 
-        # Save to database if valid datetime
-        if user_message and schedule_datetime != '不明':
-            try:
-                schedule = Schedule(
-                    user_id=event.source.user_id,
-                    message=user_message,
-                    scheduled_datetime=datetime.fromisoformat(schedule_datetime)
+        if specified_date != '不明':
+            # Retrieve schedules for the specified date
+            schedules = session.query(Schedule).filter(
+                and_(
+                    Schedule.scheduled_datetime >= datetime.fromisoformat(specified_date),
+                    Schedule.scheduled_datetime < datetime.fromisoformat(specified_date) + timedelta(days=1)
                 )
-                session.add(schedule)
-                session.commit()
+            ).all()
+
+            # If there are schedules for that day
+            if schedules:
+                schedule_text = "\n".join([f"{s.message} - {s.scheduled_datetime.strftime('%Y-%m-%d %H:%M')}" for s in schedules])
                 confirmation_message = TextSendMessage(
-                    text=f"{user_message} を {schedule_datetime} に保存しました。"
+                    text=f"指定された日にちのスケジュール:\n{schedule_text}"
                 )
-            except Exception as e:
-                session.rollback()
+            else:
                 confirmation_message = TextSendMessage(
-                    text=f"データベース保存中にエラーが発生しました: {e}"
+                    text="指定された日にちのスケジュールはありません。"
                 )
         else:
             confirmation_message = TextSendMessage(
-                text="無効なデータが入力されました。"
+                text="無効な日時が選択されました。"
             )
 
-        # Handle schedule summary
-        if "action=check_schedule" in event.postback.data:
-            # Extract the specified date
-            date_parts = event.postback.data.split("&")
-            specified_date = None
-            for part in date_parts:
-                if part.startswith("specified_date="):
-                    specified_date = part.split("=")[-1]
-
-            if specified_date:
-                # Retrieve schedules for the specified date
-                schedules = session.query(Schedule).filter(
-                    and_(
-                        Schedule.scheduled_datetime >= datetime.fromisoformat(specified_date),
-                        Schedule.scheduled_datetime < datetime.fromisoformat(specified_date) + timedelta(days=1)
-                    )
-                ).all()
-
-                # If there are schedules for that day
-                if schedules:
-                    schedule_text = "\n".join([f"{s.message} - {s.scheduled_datetime.strftime('%Y-%m-%d %H:%M')}" for s in schedules])
-                    confirmation_message = TextSendMessage(
-                        text=f"指定された日にちのスケジュール:\n{schedule_text}"
-                    )
-                else:
-                    confirmation_message = TextSendMessage(
-                        text="指定された日にちのスケジュールはありません。"
-                    )
-            
         try:
             line_bot_api.reply_message(event.reply_token, confirmation_message)
         except Exception as e:
