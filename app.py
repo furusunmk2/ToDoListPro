@@ -48,7 +48,7 @@ def handle_message(event):
 
     # ISO8601 形式の日付を計算
     today = datetime.now()
-    initial_date = today.strftime("%Y-%m-%dT%H:%M")
+    initial_date = today.strftime("%Y-%m-%dT00:00")
     max_date = (today + timedelta(days=365)).strftime("%Y-%m-%dT%H:%M")
     min_date = today.strftime("%Y-%m-%dT%H:%M")
 
