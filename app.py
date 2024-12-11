@@ -46,7 +46,7 @@ def handle_message(event):
     user_id = event.source.user_id
     datetime_picker_action = DatetimePickerTemplateAction(
         label="Select date",
-        data="action=schedule&datetime",
+        data=f"action=schedule&user_message={user_message}",
         mode="datetime",
         initial="2024-12-25T00:00",
         max="2025-01-01T23:59",
@@ -70,8 +70,21 @@ def handle_message(event):
 @handler.add(PostbackEvent)
 def handle_postback(event):
     if "action=schedule" in event.postback.data:
+        # ポストバックデータからメッセージと日時を取得
+        data_parts = event.postback.data.split("&")
+        user_message = None
+        for part in data_parts:
+            if part.startswith("user_message="):
+                user_message = part.split("=")[-1]
         schedule_datetime = event.postback.params.get('datetime', '不明')
-        message = TextSendMessage(text=f"あなたが選択した日時は {schedule_datetime} です。")
+
+        # 予約確認メッセージを作成
+        if user_message:
+            message_text = f"{user_message} を {schedule_datetime} に予約しました。"
+        else:
+            message_text = f"選択した日時は {schedule_datetime} です。"
+
+        message = TextSendMessage(text=message_text)
 
         try:
             line_bot_api.reply_message(event.reply_token, message)
