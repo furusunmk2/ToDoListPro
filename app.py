@@ -7,7 +7,8 @@ from linebot.models import (
 )
 import os
 from dotenv import load_dotenv
-import datetime
+from datetime import datetime, timedelta
+
 # Load .env file
 load_dotenv()
 
@@ -44,13 +45,20 @@ def callback():
 def handle_message(event):
     user_message = event.message.text.strip()
     user_id = event.source.user_id
+
+    # ISO8601 形式の日付を計算
+    today = datetime.now()
+    initial_date = today.strftime("%Y-%m-%dT%H:%M")
+    max_date = (today + timedelta(days=365)).strftime("%Y-%m-%dT%H:%M")
+    min_date = today.strftime("%Y-%m-%dT%H:%M")
+
     datetime_picker_action = DatetimePickerTemplateAction(
         label="Select date",
         data=f"action=schedule&user_message={user_message}",
         mode="datetime",
-        initial= datetime.date.today()
-        max="2025-01-01T23:59",
-        min="2024-01-25T00:00"
+        initial=initial_date,
+        max=max_date,
+        min=min_date
     )
 
     template_message = TemplateSendMessage(
