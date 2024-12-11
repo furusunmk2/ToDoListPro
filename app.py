@@ -65,10 +65,14 @@ def handle_message(event):
     user_id = event.source.user_id
 
     # Calculate datetime values
+    # 現在の日時（分は00に設定）
     today = datetime.now()
     initial_date = today.replace(minute=0, second=0).strftime("%Y-%m-%dT%H:%M")
-    max_date = (today + timedelta(days=365)).strftime("%Y-%m-%dT%H:%M")
-    min_date = today.strftime("%Y-%m-%dT%H:%M")
+
+    # 1年前と1年後の日時
+    min_date = (today - timedelta(days=365)).strftime("%Y-%m-%dT%H:%M")  # 1年前
+    max_date = (today + timedelta(days=365)).strftime("%Y-%m-%dT%H:%M")  # 1年後
+
 
     datetime_picker_action = DatetimePickerTemplateAction(
         label="Select date",
