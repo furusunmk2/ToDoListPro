@@ -9,7 +9,7 @@ from sqlalchemy import create_engine, Column, Integer, String, DateTime
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 from dotenv import load_dotenv
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import os
 
 # Load .env file
@@ -66,7 +66,10 @@ def handle_message(event):
 
     # Calculate datetime values
     # 現在の日時（分は00に設定）
-    today = datetime.now()
+    JST = timezone(timedelta(hours=9))
+    now_jst = datetime.now(JST)
+
+    today = now_jst
     initial_date = today.replace(minute=0, second=0).strftime("%Y-%m-%dT%H:%M")
 
     # 1年前と1年後の日時
