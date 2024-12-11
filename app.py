@@ -51,19 +51,24 @@ def handle_message(event):
     now_jst = datetime.now(JST)
 
     # 現在時刻の00分に設定した初期値
-    initial_date = now_jst.replace(minute=0, second=0, microsecond=0).strftime("%Y-%m-%dT%H:%M")
+    initial_date = now_jst.replace(minute=0, second=0, microsecond=0)
 
     # 最大値と最小値の計算
-    max_date = (now_jst + timedelta(days=365)).strftime("%Y-%m-%dT%H:%M")
-    min_date = now_jst.strftime("%Y-%m-%dT%H:%M")
+    min_date = initial_date  # 初期値を最小値と同じに設定
+    max_date = initial_date + timedelta(days=365)  # 365日後を最大値とする
+
+    # ISO8601 フォーマットに変換
+    initial_date_str = initial_date.strftime("%Y-%m-%dT%H:%M")
+    min_date_str = min_date.strftime("%Y-%m-%dT%H:%M")
+    max_date_str = max_date.strftime("%Y-%m-%dT%H:%M")
 
     datetime_picker_action = DatetimePickerTemplateAction(
         label="Select date",
         data=f"action=schedule&user_message={user_message}",
         mode="datetime",
-        initial=initial_date,
-        max=max_date,
-        min=min_date
+        initial=initial_date_str,
+        max=max_date_str,
+        min=min_date_str
     )
 
     template_message = TemplateSendMessage(
