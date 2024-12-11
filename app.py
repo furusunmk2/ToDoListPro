@@ -5,18 +5,36 @@ from linebot.models import (
     MessageEvent, TextMessage, TextSendMessage, TemplateSendMessage,
     ButtonsTemplate, DatetimePickerTemplateAction, PostbackEvent
 )
-import os
+from sqlalchemy import create_engine, Column, Integer, String, DateTime
+from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.orm import sessionmaker
 from dotenv import load_dotenv
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
+import os
 
 # Load .env file
 load_dotenv()
 
-# Get environment variables
+# Database setup
+DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///schedule.db")
+engine = create_engine(DATABASE_URL)
+Base = declarative_base()
+
+class Schedule(Base):
+    __tablename__ = 'schedules'
+    id = Column(Integer, primary_key=True)
+    user_id = Column(String, nullable=False)
+    message = Column(String, nullable=False)
+    scheduled_datetime = Column(DateTime, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+Base.metadata.create_all(engine)
+Session = sessionmaker(bind=engine)
+session = Session()
+
+# LINE setup
 LINE_CHANNEL_ACCESS_TOKEN = os.getenv("LINE_CHANNEL_ACCESS_TOKEN")
 LINE_CHANNEL_SECRET = os.getenv("LINE_CHANNEL_SECRET")
-
-# Initialize Flask app
 app = Flask(__name__)
 
 if not LINE_CHANNEL_ACCESS_TOKEN or not LINE_CHANNEL_SECRET:
@@ -46,29 +64,19 @@ def handle_message(event):
     user_message = event.message.text.strip()
     user_id = event.source.user_id
 
-    # 日本時間 (UTC+9) の現在時刻を取得
-    JST = timezone(timedelta(hours=9))
-    now_jst = datetime.now(JST)
-
-    # 現在時刻の00分に設定した初期値
-    initial_date = now_jst.replace(minute=0, second=0, microsecond=0)
-
-    # 最大値と最小値の計算
-    min_date = initial_date  # 初期値を最小値と同じに設定
-    max_date = initial_date + timedelta(days=365)  # 365日後を最大値とする
-
-    # ISO8601 フォーマットに変換
-    initial_date_str = initial_date.strftime("%Y-%m-%dT%H:%M")
-    min_date_str = min_date.strftime("%Y-%m-%dT%H:%M")
-    max_date_str = max_date.strftime("%Y-%m-%dT%H:%M")
+    # Calculate datetime values
+    today = datetime.now()
+    initial_date = today.replace(minute=0, second=0).strftime("%Y-%m-%dT%H:%M")
+    max_date = (today + timedelta(days=365)).strftime("%Y-%m-%dT%H:%M")
+    min_date = today.strftime("%Y-%m-%dT%H:%M")
 
     datetime_picker_action = DatetimePickerTemplateAction(
         label="Select date",
         data=f"action=schedule&user_message={user_message}",
         mode="datetime",
-        initial=initial_date_str,
-        max=max_date_str,
-        min=min_date_str
+        initial=initial_date,
+        max=max_date,
+        min=min_date
     )
 
     template_message = TemplateSendMessage(
@@ -88,7 +96,7 @@ def handle_message(event):
 @handler.add(PostbackEvent)
 def handle_postback(event):
     if "action=schedule" in event.postback.data:
-        # ポストバックデータからメッセージと日時を取得
+        # Extract user message and datetime
         data_parts = event.postback.data.split("&")
         user_message = None
         for part in data_parts:
@@ -96,16 +104,31 @@ def handle_postback(event):
                 user_message = part.split("=")[-1]
         schedule_datetime = event.postback.params.get('datetime', '不明')
 
-        # 予約確認メッセージを作成
-        if user_message:
-            message_text = f"{user_message} を {schedule_datetime} に予約しました。"
+        # Save to database
+        if user_message and schedule_datetime != '不明':
+            try:
+                schedule = Schedule(
+                    user_id=event.source.user_id,
+                    message=user_message,
+                    scheduled_datetime=datetime.fromisoformat(schedule_datetime)
+                )
+                session.add(schedule)
+                session.commit()
+                confirmation_message = TextSendMessage(
+                    text=f"{user_message} を {schedule_datetime} に保存しました。"
+                )
+            except Exception as e:
+                session.rollback()
+                confirmation_message = TextSendMessage(
+                    text=f"データベース保存中にエラーが発生しました: {e}"
+                )
         else:
-            message_text = f"選択した日時は {schedule_datetime} です。"
-
-        message = TextSendMessage(text=message_text)
+            confirmation_message = TextSendMessage(
+                text="無効なデータが入力されました。"
+            )
 
         try:
-            line_bot_api.reply_message(event.reply_token, message)
+            line_bot_api.reply_message(event.reply_token, confirmation_message)
         except Exception as e:
             print(f"Error while sending confirmation message: {e}")
 
