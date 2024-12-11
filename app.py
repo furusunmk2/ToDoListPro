@@ -68,32 +68,30 @@ def handle_message(event):
     user_id = event.source.user_id  # ユーザーIDを取得
     response_text = ""
 
-    if "スケジュール" in user_message:  # スケジュール作成を希望する場合
-        # DatetimePickerアクションの作成
-        datetime_picker_action = DatetimePickerTemplateAction(
-            label="Select date",
-            data="storeId=12345",
-            mode="datetime",
-            initial="2024-12-25T00:00",
-            max="2025-01-01T23:59",
-            min="2024-12-25T00:00"
-        )
+    datetime_picker_action = DatetimePickerTemplateAction(
+        label="Select date",
+        data="storeId=12345",
+        mode="datetime",
+        initial="2024-12-25T00:00",
+        max="2025-01-01T23:59",
+        min="2024-12-25T00:00"
+    )
 
-        # ボタンテンプレートメッセージの作成
-        template_message = TemplateSendMessage(
-            alt_text="日時選択メッセージ",
-            template=ButtonsTemplate(
-                text="日時を選んでください",
-                actions=[datetime_picker_action]
-            )
+    # ボタンテンプレートメッセージの作成
+    template_message = TemplateSendMessage(
+        alt_text="日時選択メッセージ",
+        template=ButtonsTemplate(
+            text="日時を選んでください",
+            actions=[datetime_picker_action]
         )
+    )
 
-        # メッセージを送信
-        try:
-            line_bot_api.push_message(user_id, template_message)
-            print(f"Datetime picker message sent to user: {user_id}")
-        except Exception as e:
-            print(f"Error while sending datetime picker message: {e}")
+    # メッセージを送信
+    try:
+        line_bot_api.push_message(user_id, template_message)
+        print(f"Datetime picker message sent to user: {user_id}")
+    except Exception as e:
+        print(f"Error while sending datetime picker message: {e}")
 
 @handler.add(MessageEvent, message=TextMessage)
 def handle_postback(event):
