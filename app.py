@@ -70,11 +70,11 @@ def handle_message(event):
         JST = timezone(timedelta(hours=9))
         now_jst = datetime.now(JST)
         today = now_jst
-        initial_date = today.replace(minute=0, second=0).strftime("%Y-%m-%dT")
+        initial_date = today.strftime("%Y-%m-%dT%H:%M")  # 修正: 時間も含めて初期値を設定
 
         # 1年前と1年後の日時を計算
-        min_date = (today - timedelta(days=365)).strftime("%Y-%m-%dT")  # 1年前
-        max_date = (today + timedelta(days=365)).strftime("%Y-%m-%dT")  # 1年後
+        min_date = (today - timedelta(days=365)).strftime("%Y-%m-%dT%H:%M")  # 1年前
+        max_date = (today + timedelta(days=365)).strftime("%Y-%m-%dT%H:%M")  # 1年後
 
         # 日時選択のためのアクションを送信
         datetime_picker_action = DatetimePickerTemplateAction(
