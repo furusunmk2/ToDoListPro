@@ -174,6 +174,32 @@ def handle_postback(event):
         except Exception as e:
             print(f"確認メッセージ送信時のエラー: {e}")
 
+    if "action=check_schedule" in event.postback.data:
+        # 日時を取得
+        selected_date = event.postback.params.get('datetime', '')
+        if selected_date:
+            # 日付のフォーマットを調整
+            selected_date = datetime.fromisoformat(selected_date).date()
+            
+            # 指定された日の予定を時系列順に取得
+            schedules = session.query(Schedule).filter(
+                Schedule.user_id == event.source.user_id,
+                Schedule.scheduled_datetime.date() == selected_date
+            ).order_by(Schedule.scheduled_datetime).all()
+
+            if schedules:
+                schedule_messages = [f"{schedule.scheduled_datetime.strftime('%H:%M')} - {schedule.message}" for schedule in schedules]
+                response_message = "\n".join(schedule_messages)
+            else:
+                response_message = "その日に予定はありません。"
+
+            confirmation_message = TextSendMessage(text=response_message)
+
+            try:
+                line_bot_api.reply_message(event.reply_token, confirmation_message)
+            except Exception as e:
+                print(f"エラーメッセージ送信時のエラー: {e}")
+
 if __name__ == "__main__":
     port = int(os.getenv("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
