@@ -70,11 +70,11 @@ def handle_message(event):
         JST = timezone(timedelta(hours=9))
         now_jst = datetime.now(JST)
         today = now_jst
-        initial_date = today.strftime("%Y-%m-%dT%H:%M")  # 修正: 時間も含めて初期値を設定
+        initial_date = today.replace(minute=0, second=0).strftime("%Y-%m-%dT")
 
         # 1年前と1年後の日時を計算
-        min_date = (today - timedelta(days=365)).strftime("%Y-%m-%dT%H:%M")  # 1年前
-        max_date = (today + timedelta(days=365)).strftime("%Y-%m-%dT%H:%M")  # 1年後
+        min_date = (today - timedelta(days=365)).strftime("%Y-%m-%dT")  # 1年前
+        max_date = (today + timedelta(days=365)).strftime("%Y-%m-%dT")  # 1年後
 
         # 日時選択のためのアクションを送信
         datetime_picker_action = DatetimePickerTemplateAction(
@@ -173,32 +173,34 @@ def handle_postback(event):
             line_bot_api.reply_message(event.reply_token, confirmation_message)
         except Exception as e:
             print(f"確認メッセージ送信時のエラー: {e}")
-
     if "action=check_schedule" in event.postback.data:
-        # 日時を取得
-        selected_date = event.postback.params.get('datetime', '')
-        if selected_date:
-            # 日付のフォーマットを調整
-            selected_date = datetime.fromisoformat(selected_date).date()
-            
-            # 指定された日の予定を時系列順に取得
+        # ユーザーが選んだ日付を取得
+        selected_date_str = event.postback.params.get('datetime', '不明')
+        if selected_date_str != '不明':
+            selected_date = datetime.fromisoformat(selected_date_str).date()
+
+            # 予定をデータベースから取得し、選択した日付と一致するかチェック
             schedules = session.query(Schedule).filter(
-                Schedule.user_id == event.source.user_id,
-                Schedule.scheduled_datetime.date() == selected_date
+                Schedule.scheduled_datetime >= selected_date,
+                Schedule.scheduled_datetime < selected_date + timedelta(days=1)
             ).order_by(Schedule.scheduled_datetime).all()
 
             if schedules:
-                schedule_messages = [f"{schedule.scheduled_datetime.strftime('%H:%M')} - {schedule.message}" for schedule in schedules]
+                schedule_messages = [
+                    f"{schedule.scheduled_datetime.strftime('%H:%M')} - {schedule.message}" for schedule in schedules
+                ]
                 response_message = "\n".join(schedule_messages)
             else:
                 response_message = "その日に予定はありません。"
 
             confirmation_message = TextSendMessage(text=response_message)
+        else:
+            confirmation_message = TextSendMessage(text="日付の取得に失敗しました。")
 
-            try:
-                line_bot_api.reply_message(event.reply_token, confirmation_message)
-            except Exception as e:
-                print(f"エラーメッセージ送信時のエラー: {e}")
+        try:
+            line_bot_api.reply_message(event.reply_token, confirmation_message)
+        except Exception as e:
+            print(f"確認メッセージ送信時のエラー: {e}")
 
 if __name__ == "__main__":
     port = int(os.getenv("PORT", 5000))
