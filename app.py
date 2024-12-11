@@ -7,7 +7,7 @@ from linebot.models import (
 )
 import os
 from dotenv import load_dotenv
-
+import datetime
 # Load .env file
 load_dotenv()
 
@@ -48,9 +48,9 @@ def handle_message(event):
         label="Select date",
         data=f"action=schedule&user_message={user_message}",
         mode="datetime",
-        initial="2024-12-25T00:00",
+        initial= datetime.date.today()
         max="2025-01-01T23:59",
-        min="2024-12-25T00:00"
+        min="2024-01-25T00:00"
     )
 
     template_message = TemplateSendMessage(
