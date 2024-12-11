@@ -7,7 +7,7 @@ from linebot.models import (
 )
 import os
 from dotenv import load_dotenv
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 # Load .env file
 load_dotenv()
@@ -46,11 +46,16 @@ def handle_message(event):
     user_message = event.message.text.strip()
     user_id = event.source.user_id
 
-    # ISO8601 形式の日付を計算
-    today = datetime.now()
-    initial_date = today.strftime("%Y-%m-%dT00:00")
-    max_date = (today + timedelta(days=365)).strftime("%Y-%m-%dT%H:%M")
-    min_date = today.strftime("%Y-%m-%dT%H:%M")
+    # 日本時間 (UTC+9) の現在時刻を取得
+    JST = timezone(timedelta(hours=9))
+    now_jst = datetime.now(JST)
+
+    # 現在時刻の00分に設定した初期値
+    initial_date = now_jst.replace(minute=0, second=0, microsecond=0).strftime("%Y-%m-%dT%H:%M")
+
+    # 最大値と最小値の計算
+    max_date = (now_jst + timedelta(days=365)).strftime("%Y-%m-%dT%H:%M")
+    min_date = now_jst.strftime("%Y-%m-%dT%H:%M")
 
     datetime_picker_action = DatetimePickerTemplateAction(
         label="Select date",
