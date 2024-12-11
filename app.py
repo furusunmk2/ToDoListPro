@@ -5,17 +5,17 @@ from linebot.models import (
     MessageEvent, TextMessage, TextSendMessage, TemplateSendMessage,
     ButtonsTemplate, DatetimePickerTemplateAction, PostbackEvent
 )
-from sqlalchemy import create_engine, Column, Integer, String, DateTime, and_
+from sqlalchemy import create_engine, Column, Integer, String, DateTime
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 from dotenv import load_dotenv
-from datetime import datetime, timedelta,timezone
+from datetime import datetime, timedelta, timezone
 import os
 
-# Load .env file
+# .envファイルの読み込み
 load_dotenv()
 
-# Database setup
+# データベースの設定
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///schedule.db")
 engine = create_engine(DATABASE_URL)
 Base = declarative_base()
@@ -32,13 +32,13 @@ Base.metadata.create_all(engine)
 Session = sessionmaker(bind=engine)
 session = Session()
 
-# LINE setup
+# LINEの設定
 LINE_CHANNEL_ACCESS_TOKEN = os.getenv("LINE_CHANNEL_ACCESS_TOKEN")
 LINE_CHANNEL_SECRET = os.getenv("LINE_CHANNEL_SECRET")
 app = Flask(__name__)
 
 if not LINE_CHANNEL_ACCESS_TOKEN or not LINE_CHANNEL_SECRET:
-    raise ValueError("Missing LINE_CHANNEL_ACCESS_TOKEN or LINE_CHANNEL_SECRET")
+    raise ValueError("LINE_CHANNEL_ACCESS_TOKEN または LINE_CHANNEL_SECRET が設定されていません")
 
 line_bot_api = LineBotApi(LINE_CHANNEL_ACCESS_TOKEN)
 handler = WebhookHandler(LINE_CHANNEL_SECRET)
@@ -49,37 +49,36 @@ def callback():
     body = request.get_data(as_text=True)
 
     if not signature:
-        abort(400, "Missing X-Line-Signature header")
+        abort(400, "X-Line-Signature ヘッダーが欠けています")
 
     try:
         handler.handle(body, signature)
     except InvalidSignatureError:
-        abort(400, "Invalid signature")
+        abort(400, "無効な署名です")
 
     return 'OK'
 
-# Handle TextMessage events
+# TextMessageイベントの処理
 @handler.add(MessageEvent, message=TextMessage)
 def handle_message(event):
     user_message = event.message.text.strip()
     user_id = event.source.user_id
 
-    # If the user asks for schedule confirmation
+    # 予定確認の場合
     if user_message == "予定確認":
-        # Calculate datetime values
+        # 日時の計算
         JST = timezone(timedelta(hours=9))
         now_jst = datetime.now(JST)
-
         today = now_jst
         initial_date = today.replace(minute=0, second=0).strftime("%Y-%m-%dT%H:%M")
 
-        # 1年前と1年後の日時
+        # 1年前と1年後の日時を計算
         min_date = (today - timedelta(days=365)).strftime("%Y-%m-%dT%H:%M")  # 1年前
         max_date = (today + timedelta(days=365)).strftime("%Y-%m-%dT%H:%M")  # 1年後
 
-        # Show datetime picker for user to select a date
+        # 日時選択のためのアクションを送信
         datetime_picker_action = DatetimePickerTemplateAction(
-            label="日付を選択",
+            label="日付を選んでください",
             data=f"action=check_schedule&user_id={user_id}",
             mode="datetime",
             initial=initial_date,
@@ -98,48 +97,82 @@ def handle_message(event):
         try:
             line_bot_api.push_message(user_id, template_message)
         except Exception as e:
-            print(f"Error while sending datetime picker message: {e}")
-    
-    else:
-        # Handle other messages (e.g., schedule input)
-        # Your input handling logic goes here
-        pass
+            print(f"日時選択メッセージの送信エラー: {e}")
 
-# Handle Postback events
+    # 予定入力の場合
+    else:
+        # 日時の選択
+        JST = timezone(timedelta(hours=9))
+        now_jst = datetime.now(JST)
+        today = now_jst
+        initial_date = today.replace(minute=0, second=0).strftime("%Y-%m-%dT%H:%M")
+
+        # 1年前と1年後の日時を計算
+        min_date = (today - timedelta(days=365)).strftime("%Y-%m-%dT%H:%M")  # 1年前
+        max_date = (today + timedelta(days=365)).strftime("%Y-%m-%dT%H:%M")  # 1年後
+
+        # 日時選択のためのアクションを送信
+        datetime_picker_action = DatetimePickerTemplateAction(
+            label="予定の日時を選んでください",
+            data=f"action=schedule&user_message={user_message}",
+            mode="datetime",
+            initial=initial_date,
+            max=max_date,
+            min=min_date
+        )
+
+        template_message = TemplateSendMessage(
+            alt_text="予定日時選択メッセージ",
+            template=ButtonsTemplate(
+                text="予定の日時を選んでください",
+                actions=[datetime_picker_action]
+            )
+        )
+
+        try:
+            line_bot_api.push_message(user_id, template_message)
+        except Exception as e:
+            print(f"日時選択メッセージの送信エラー: {e}")
+
+# Postbackイベントの処理
 @handler.add(PostbackEvent)
 def handle_postback(event):
-    if "action=check_schedule" in event.postback.data:
-        # Extract the specified date
-        specified_date = event.postback.params.get('datetime', '不明')
+    if "action=schedule" in event.postback.data:
+        # ユーザーメッセージと日時を取得
+        data_parts = event.postback.data.split("&")
+        user_message = None
+        for part in data_parts:
+            if part.startswith("user_message="):
+                user_message = part.split("=")[-1]
+        schedule_datetime = event.postback.params.get('datetime', '不明')
 
-        if specified_date != '不明':
-            # Retrieve schedules for the specified date
-            schedules = session.query(Schedule).filter(
-                and_(
-                    Schedule.scheduled_datetime >= datetime.fromisoformat(specified_date),
-                    Schedule.scheduled_datetime < datetime.fromisoformat(specified_date) + timedelta(days=1)
+        # データベースに保存
+        if user_message and schedule_datetime != '不明':
+            try:
+                schedule = Schedule(
+                    user_id=event.source.user_id,
+                    message=user_message,
+                    scheduled_datetime=datetime.fromisoformat(schedule_datetime)
                 )
-            ).all()
-
-            # If there are schedules for that day
-            if schedules:
-                schedule_text = "\n".join([f"{s.message} - {s.scheduled_datetime.strftime('%Y-%m-%d %H:%M')}" for s in schedules])
+                session.add(schedule)
+                session.commit()
                 confirmation_message = TextSendMessage(
-                    text=f"指定された日にちのスケジュール:\n{schedule_text}"
+                    text=f"{user_message} の予定を {schedule_datetime} に保存しました。"
                 )
-            else:
+            except Exception as e:
+                session.rollback()
                 confirmation_message = TextSendMessage(
-                    text="指定された日にちのスケジュールはありません。"
+                    text=f"データベース保存中にエラーが発生しました: {e}"
                 )
         else:
             confirmation_message = TextSendMessage(
-                text="無効な日時が選択されました。"
+                text="無効なデータが入力されました。"
             )
 
         try:
             line_bot_api.reply_message(event.reply_token, confirmation_message)
         except Exception as e:
-            print(f"Error while sending confirmation message: {e}")
+            print(f"確認メッセージ送信時のエラー: {e}")
 
 if __name__ == "__main__":
     port = int(os.getenv("PORT", 5000))
