@@ -97,7 +97,38 @@ def handle_message(event):
             line_bot_api.push_message(user_id, template_message)
         except Exception as e:
             print(f"日時選択メッセージの送信エラー: {e}")
+    elif user_message == "日報作成":
+        # 日時の計算
+        JST = timezone(timedelta(hours=9))
+        now_jst = datetime.now(JST)
+        today = now_jst
+        initial_date = today.replace(minute=0, second=0).strftime("%Y-%m-%dT%H:%M")
 
+        # 1年前と1年後の日時を計算
+        min_date = (today - timedelta(days=365)).strftime("%Y-%m-%dT%H:%M")  # 1年前
+        max_date = (today + timedelta(days=365)).strftime("%Y-%m-%dT%H:%M")  # 1年後S
+
+        # 日時選択のためのアクションを送信
+        datetime_picker_action = DatetimePickerTemplateAction(
+            label="日付を選ぶにゃ",
+            data=f"action=generate_report&user_id={user_id}",
+            mode="datetime",
+            initial=initial_date,
+            max=max_date,
+            min=min_date
+        )
+        template_message = TemplateSendMessage(
+            alt_text="日時選択メッセージ",
+            template=ButtonsTemplate(
+                text="いつの日報が必要だにゃ？",
+                actions=[datetime_picker_action]
+            )
+        )
+
+        try:
+            line_bot_api.push_message(user_id, template_message)
+        except Exception as e:
+            print(f"日時選択メッセージの送信エラー: {e}")
     # 予定入力の場合
     else:
         # 日時の選択
