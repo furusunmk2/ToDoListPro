@@ -225,14 +225,39 @@ def handle_postback(event):
                 ) or "その日に予定はありません。"
                 response_message = f"📅 {selected_date.strftime('%Y年%m月%d日')} の予定一覧:\n{schedule_text}"
             else:
+    # 明日のスケジュールを取得
+                tomorrow_date = selected_date + timedelta(days=3 if selected_date.weekday() == 4 else 1)  # 金曜日の場合、3日後（月曜日）を取得
+                tomorrow_schedules = session.query(Schedule).filter(
+                    Schedule.scheduled_datetime >= tomorrow_date,
+                    Schedule.scheduled_datetime < tomorrow_date + timedelta(days=1)
+                ).order_by(Schedule.scheduled_datetime).all()
+
                 report_text = "\n".join(
                     [f"{schedule.scheduled_datetime.strftime('%H:%M')} - {schedule.message}" for schedule in schedules]
                 ) or f"{selected_date.strftime('%Y年%m月%d日')} に予定がないため、日報を生成できません。"
+                
+                report_text_tomorrow = "\n".join(
+                    [f"{schedule.scheduled_datetime.strftime('%H:%M')} - {schedule.message}" for schedule in tomorrow_schedules]
+                ) or f"{tomorrow_date.strftime('%Y年%m月%d日')} に予定がないため、スケジュールがありません。"
+
                 if gemini_pro:
-                    prompt = f"日報生成プロンプト: {report_text}"
+                    prompt = f"""
+            日付: {selected_date.strftime('%Y年%m月%d日')}
+            勤務時間: 09:00 - 17:15
+            タスク: {report_text}
+            課題:
+            成果:
+            改善点:
+            その他:
+            明日のスケジュール: {report_text_tomorrow}
+                    """
                     response_message = generate_report_with_ai(prompt, gemini_pro)
                 else:
                     response_message = report_text
+
+
+
+
 
             confirmation_message = TextSendMessage(text=response_message)
         else:
