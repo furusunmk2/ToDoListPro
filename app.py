@@ -80,9 +80,23 @@ def generate_report_with_ai(prompt, model):
     """Gemini APIを使用して日報を生成する"""
     try:
         response = model.generate_content(prompt)
-        if response and hasattr(response, 'candidates') and len(response.candidates) > 0:
-            return response.candidates[0].text.strip()
-        return "AIからの応答が生成されませんでした。"
+        
+        # レスポンス解析
+        if response:
+            if hasattr(response, 'candidates') and len(response.candidates) > 0:
+                candidate = response.candidates[0]
+                
+                # 候補が辞書形式かを確認
+                if isinstance(candidate, dict) and 'text' in candidate:
+                    return candidate['text'].strip()
+                elif hasattr(candidate, 'text'):
+                    return candidate.text.strip()
+                else:
+                    return "AI応答フォーマットが予期した形式ではありません。"
+            else:
+                return "候補が存在しませんでした。"
+        else:
+            return "AIからの応答が生成されませんでした。"
     except Exception as e:
         logger.error(f"AI生成中にエラー: {e}")
         return f"AI生成中にエラーが発生しました: {e}"
