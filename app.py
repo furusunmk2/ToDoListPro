@@ -12,6 +12,13 @@ from dotenv import load_dotenv
 from datetime import datetime, timedelta, timezone
 import os
 
+try:
+    import google.generativeai as genai
+    genai_available = True
+except ImportError as e:
+    print(f"Google Generative AI module not found: {e}")
+    genai_available = False
+
 # .envファイルの読み込み
 load_dotenv()
 
@@ -35,6 +42,19 @@ session = Session()
 # LINEの設定
 LINE_CHANNEL_ACCESS_TOKEN = os.getenv("LINE_CHANNEL_ACCESS_TOKEN")
 LINE_CHANNEL_SECRET = os.getenv("LINE_CHANNEL_SECRET")
+GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
+
+if genai_available and GOOGLE_API_KEY:
+    try:
+        genai.configure(api_key=GOOGLE_API_KEY)
+        gemini_pro = genai.GenerativeModel("gemini-pro")
+        print("Google Generative AI configured successfully.")
+    except Exception as e:
+        gemini_pro = None
+        print(f"Failed to configure Google Generative AI: {e}")
+else:
+    gemini_pro = None
+
 app = Flask(__name__)
 
 if not LINE_CHANNEL_ACCESS_TOKEN or not LINE_CHANNEL_SECRET:
@@ -236,6 +256,7 @@ def handle_postback(event):
             print(f"確認メッセージ送信時のエラー: {e}")
 
     if "action=generate_report" in event.postback.data:
+
         # 日報作成処理
         selected_date_str = event.postback.params.get('datetime', '不明')
         if selected_date_str != '不明':
@@ -258,6 +279,66 @@ def handle_postback(event):
                 # 例: report_text = gemini_generate_report(schedule_text)
             else:
                 report_text = f"{selected_date.strftime('%Y年%m月%d日')} に予定がないため、日報を生成できません。"
+            
+            prompt = f"""
+
+元の文章を参照して以下の形式で医療記録を生成してください。
+'''
+【食生活、清潔、排泄、睡眠、生活リズム、部屋の整頓等】
+生成した文章
+【精神状態】 
+生成した文章 
+【服薬等の状況】
+生成した文章
+【作業、対人関係について】 
+生成した文章
+【その他】※無い場合もあります
+生成した文章  ※無い場合もあります
+'''
+
+利用者様は精神障害や発達障害を抱える方で障碍者向けグループホームに通いながら、平日は作業所へ通っています。
+条件が5点あります。
+"【】"で囲まれた文は変更しないでください。
+その他の文は文意は変更せずに文章を変更してください。
+２００文字程度ごとに誤字を作ってください
+ですます調は絶対に使わず、語尾は体言止めか形容詞止めか『いる。』か『ある。』か『あり。』か『ない。』のみを使ってください。
+
+元の文章:
+{report_text}
+生成した文章:
+"""
+            print(f"Generated Prompt: {prompt}")  # プロンプトをデバッグ出力
+
+            try:
+                # Google Generative AIで応答を生成
+                model = genai.GenerativeModel('gemini-pro')
+                response = model.generate_content(f"{prompt}")
+                print(f"GenerateContentResponse: {response}")  # レスポンス全体をデバッグ出力
+                    
+                # レスポンスが存在し、候補が含まれている場合に処理を続行
+                # 応答候補が存在する場合
+                if response and response.candidates:
+                    # 最初の候補のテキスト部分を取得
+                    first_candidate = response.candidates[0]
+                    response_text = first_candidate.content.parts[0].text  # ここで属性を利用
+                    print(f"First Candidate: {first_candidate}")  # 候補を詳細にデバッグ
+                    # parts配列から最初のテキストを取得
+                    response_text = first_candidate.content.parts[0].text
+                    print(f"Generated Text: {response_text}")  # 応答テキストをデバッグ出力
+                else:
+                    print("No candidates found in the response.")  # 応答が空の場合
+                    response_text = "AIからの応答が生成されませんでした。"
+            except AttributeError as e:
+                print(f"AttributeError in response handling: {e}")
+                response_text = "AI応答の処理中にエラーが発生しました。"
+            except Exception as e:
+                print(f"Unexpected error during AI content generation: {e}")
+                response_text = f"AI応答の生成中にエラーが発生しました: {str(e)}"
+
+
+
+
+
 
             confirmation_message = TextSendMessage(text=report_text)
         else:
@@ -267,6 +348,11 @@ def handle_postback(event):
             line_bot_api.reply_message(event.reply_token, confirmation_message)
         except Exception as e:
             print(f"日報生成メッセージ送信時のエラー: {e}")
+
+        
+        
+        
+        
 
 if __name__ == "__main__":
     port = int(os.getenv("PORT", 5000))
