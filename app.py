@@ -70,11 +70,11 @@ def handle_message(event):
         JST = timezone(timedelta(hours=9))
         now_jst = datetime.now(JST)
         today = now_jst
-        initial_date = today.replace(minute=0, second=0).strftime("%Y-%m-%d-%H:%M")
+        initial_date = today.replace(minute=0, second=0).strftime("%Y-%m-%dT%H:%M")
 
         # 1年前と1年後の日時を計算
-        min_date = (today - timedelta(days=365)).strftime("%Y-%m-%d-%H:%M")  # 1年前
-        max_date = (today + timedelta(days=365)).strftime("%Y-%m-%d-%H:%M")  # 1年後S
+        min_date = (today - timedelta(days=365)).strftime("%Y-%m-%dT%H:%M")  # 1年前
+        max_date = (today + timedelta(days=365)).strftime("%Y-%m-%dT%H:%M")  # 1年後S
 
         # 日時選択のためのアクションを送信
         datetime_picker_action = DatetimePickerTemplateAction(
@@ -97,38 +97,6 @@ def handle_message(event):
             line_bot_api.push_message(user_id, template_message)
         except Exception as e:
             print(f"日時選択メッセージの送信エラー: {e}")
-    elif user_message == "日報作成":
-        # 日時の計算
-        JST = timezone(timedelta(hours=9))
-        now_jst = datetime.now(JST)
-        today = now_jst
-        initial_date = today.replace(minute=0, second=0).strftime("%Y-%m-%d-%H:%M")
-
-        # 1年前と1年後の日時を計算
-        min_date = (today - timedelta(days=365)).strftime("%Y-%m-%d-%H:%M")  # 1年前
-        max_date = (today + timedelta(days=365)).strftime("%Y-%m-%d-%H:%M")  # 1年後S
-
-        # 日時選択のためのアクションを送信
-        datetime_picker_action = DatetimePickerTemplateAction(
-            label="日付を選ぶにゃ",
-            data=f"action=check_schedule&user_id={user_id}",
-            mode="datetime",
-            initial=initial_date,
-            max=max_date,
-            min=min_date
-        )
-        template_message = TemplateSendMessage(
-            alt_text="日時選択メッセージ",
-            template=ButtonsTemplate(
-                text="いつの日報が欲しいにゃ？",
-                actions=[datetime_picker_action]
-            )
-        )
-
-        try:
-            line_bot_api.push_message(user_id, template_message)
-        except Exception as e:
-            print(f"日時選択メッセージの送信エラー: {e}")
 
     # 予定入力の場合
     else:
@@ -136,11 +104,11 @@ def handle_message(event):
         JST = timezone(timedelta(hours=9))
         now_jst = datetime.now(JST)
         today = now_jst
-        initial_date = today.replace(minute=0, second=0).strftime("%Y-%m-%d-%H:%M")
+        initial_date = today.replace(minute=0, second=0).strftime("%Y-%m-%dT%H:%M")
 
         # 1年前と1年後の日時を計算
-        min_date = (today - timedelta(days=365)).strftime("%Y-%m-%d-%H:%M")  # 1年前
-        max_date = (today + timedelta(days=365)).strftime("%Y-%m-%d-%H:%M")  # 1年後
+        min_date = (today - timedelta(days=365)).strftime("%Y-%m-%dT%H:%M")  # 1年前
+        max_date = (today + timedelta(days=365)).strftime("%Y-%m-%dT%H:%M")  # 1年後
 
         # 日時選択のためのアクションを送信
         datetime_picker_action = DatetimePickerTemplateAction(
@@ -236,6 +204,7 @@ def handle_postback(event):
             line_bot_api.reply_message(event.reply_token, confirmation_message)
         except Exception as e:
             print(f"日報生成メッセージ送信時のエラー: {e}")
+
 if __name__ == "__main__":
     port = int(os.getenv("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
