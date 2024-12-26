@@ -137,9 +137,41 @@ def handle_message(event):
 @handler.add(PostbackEvent)
 def handle_postback(event):
     if "action=schedule" in event.postback.data:
-        # 予定登録処理（省略。既存コード参照）
-        pass
+       # ユーザーメッセージと日時を取得
+        data_parts = event.postback.data.split("&")
+        user_message = None
+        for part in data_parts:
+            if part.startswith("user_message="):
+                user_message = part.split("=")[-1]
+        schedule_datetime = event.postback.params.get('datetime', '不明')
 
+        # データベースに保存
+        if user_message and schedule_datetime != '不明':
+            try:
+                schedule = Schedule(
+                    user_id=event.source.user_id,
+                    message=user_message,
+                    scheduled_datetime=datetime.fromisoformat(schedule_datetime)
+                )
+                session.add(schedule)
+                session.commit()
+                confirmation_message = TextSendMessage(
+                    text=f"{user_message} の予定を {schedule_datetime} に保存しました。"
+                )
+            except Exception as e:
+                session.rollback()
+                confirmation_message = TextSendMessage(
+                    text=f"データベース保存中にエラーが発生しました: {e}"
+                )
+        else:
+            confirmation_message = TextSendMessage(
+                text="無効なデータが入力されました。"
+            )
+
+        try:
+            line_bot_api.reply_message(event.reply_token, confirmation_message)
+        except Exception as e:
+            print(f"確認メッセージ送信時のエラー: {e}")
     if "action=check_schedule" in event.postback.data:
         # ユーザーが選んだ日付を取得
         selected_date_str = event.postback.params.get('datetime', '不明')
