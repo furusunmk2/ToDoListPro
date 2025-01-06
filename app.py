@@ -260,9 +260,10 @@ def handle_postback(event):
 
 
             confirmation_message = TextSendMessage(text=response_message)
+            confirmation_message.replace("**","")
         else:
             confirmation_message = TextSendMessage(text="日付の取得に失敗しました。")
-        confirmation_message.replace("**","")
+        
         try:
             line_bot_api.reply_message(event.reply_token, confirmation_message)
         except Exception as e:
