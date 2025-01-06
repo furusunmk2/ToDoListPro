@@ -260,7 +260,6 @@ def handle_postback(event):
 
 
             confirmation_message = TextSendMessage(text=response_message)
-            confirmation_message.replace("**","")
         else:
             confirmation_message = TextSendMessage(text="日付の取得に失敗しました。")
         
