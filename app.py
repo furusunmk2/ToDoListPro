@@ -67,6 +67,11 @@ if not LINE_CHANNEL_ACCESS_TOKEN or not LINE_CHANNEL_SECRET:
 line_bot_api = LineBotApi(LINE_CHANNEL_ACCESS_TOKEN)
 handler = WebhookHandler(LINE_CHANNEL_SECRET)
 
+# ルート追加
+@app.route("/")
+def index():
+    return "このサービスはLINEからのみ利用可能です。"
+
 def calculate_datetime_range():
     """日時の初期値、最小値、最大値を計算する"""
     JST = timezone(timedelta(hours=9))
@@ -80,18 +85,62 @@ def generate_report_with_ai(prompt, model):
     """Gemini APIを使用して日報を生成する"""
     try:
         response = model.generate_content(prompt)
-
         if response and hasattr(response, 'candidates') and len(response.candidates) > 0:
-            candidate = response.candidates[0]
-            report_text = candidate.get('text', '').strip()
-
-            # アスタリスクを除去する処理を追加
-            clean_report = report_text.replace("*", "")
-            return clean_report
-        else:
-            return "AI応答が生成されませんでした。"
+            return response.candidates[0].get('content', "生成エラー").strip()
+        return "AI応答がありませんでした。"
     except Exception as e:
         logger.error(f"AI生成中にエラー: {e}")
-        return f"AI生成中にエラーが発生しました: {e}"
+        return "AI生成中にエラーが発生しました。"
 
-# 以下のコードは元のコードと同じです（省略）
+@app.route("/callback", methods=['POST'])
+def callback():
+    signature = request.headers.get('X-Line-Signature')
+    body = request.get_data(as_text=True)
+
+    if not signature:
+        abort(400, "X-Line-Signature ヘッダーが欠けています")
+
+    try:
+        handler.handle(body, signature)
+    except InvalidSignatureError:
+        abort(400, "無効な署名です")
+
+    return 'OK'
+
+@handler.add(MessageEvent, message=TextMessage)
+def handle_message(event):
+    user_message = event.message.text.strip()
+    user_id = event.source.user_id
+    initial_date, min_date, max_date = calculate_datetime_range()
+
+    if user_message == "予定確認" or user_message == "日報作成":
+        action_data = "check_schedule" if user_message == "予定確認" else "generate_report"
+        datetime_picker_action = DatetimePickerTemplateAction(
+            label="日付を選ぶにゃ",
+            data=f"action={action_data}&user_id={user_id}",
+            mode="datetime",
+            initial=initial_date,
+            max=max_date,
+            min=min_date
+        )
+        template_message = TemplateSendMessage(
+            alt_text="日時選択メッセージ",
+            template=ButtonsTemplate(
+                text="確認したい日はいつだにゃ？" if user_message == "予定確認" else "いつの日報が必要だにゃ？",
+                actions=[datetime_picker_action]
+            )
+        )
+        try:
+            line_bot_api.push_message(user_id, template_message)
+        except Exception as e:
+            logger.error(f"日時選択メッセージの送信エラー: {e}")
+    else:
+        template_message = TextSendMessage(text="無効なメッセージです。")
+        try:
+            line_bot_api.push_message(user_id, template_message)
+        except Exception as e:
+            logger.error(f"メッセージ送信エラー: {e}")
+
+if __name__ == "__main__":
+    port = int(os.getenv("PORT", 5000))
+    app.run(host="0.0.0.0", port=port)
