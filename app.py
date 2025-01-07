@@ -243,7 +243,7 @@ def handle_postback(event):
                 if gemini_pro:
                     prompt = f"""
             日付: {selected_date.strftime('%Y年%m月%d日')}
-            勤務時間: 09:00 - 17:15
+            勤務時間: 09:00 - 17:30
             タスク: {report_text}
             課題:
             成果:
@@ -258,7 +258,7 @@ def handle_postback(event):
 
 
 
-            response_message.replace("**","")
+            response_message.replace("*","")
             confirmation_message = TextSendMessage(text=response_message)
         else:
             confirmation_message = TextSendMessage(text="日付の取得に失敗しました。")
