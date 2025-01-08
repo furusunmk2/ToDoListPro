@@ -12,7 +12,6 @@ from dotenv import load_dotenv
 from datetime import datetime, timedelta, timezone
 import logging
 import os
-import json
 
 try:
     import google.generativeai as genai
@@ -48,8 +47,6 @@ Session = scoped_session(sessionmaker(bind=engine))
 LINE_CHANNEL_ACCESS_TOKEN = os.getenv("LINE_CHANNEL_ACCESS_TOKEN")
 LINE_CHANNEL_SECRET = os.getenv("LINE_CHANNEL_SECRET")
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
-# JSONファイルのパス
-JSON_FILE_PATH = os.getnv("JSON_data")
 
 if genai_available and GOOGLE_API_KEY:
     try:
@@ -111,31 +108,6 @@ def generate_report_with_ai(prompt, model):
     except Exception as e:
         print(f"AI生成中にエラー: {e}")
         return f"AI生成中にエラーが発生しました: {e}"
-
-def save_schedule_to_json(schedule):
-    """スケジュールをJSONファイルに保存する"""
-    # ファイルが存在する場合は読み込む
-    if os.path.exists(JSON_FILE_PATH):
-        with open(JSON_FILE_PATH, "r", encoding="utf-8") as file:
-            try:
-                data = json.load(file)
-            except json.JSONDecodeError:
-                data = []
-    else:
-        data = []
-
-    # スケジュールを追加
-    data.append({
-        "user_id": schedule.user_id,
-        "message": schedule.message,
-        "scheduled_datetime": schedule.scheduled_datetime.isoformat(),
-        "created_at": schedule.created_at.isoformat()
-    })
-
-    # ファイルに書き込む
-    with open(JSON_FILE_PATH, "w", encoding="utf-8") as file:
-        json.dump(data, file, ensure_ascii=False, indent=4)
-
 
 @app.route("/callback", methods=['POST'])
 def callback():
@@ -220,11 +192,6 @@ def handle_postback(event):
                     )
                     session.add(schedule)
                     session.commit()
-                    
-                     # JSONファイルに保存
-                    save_schedule_to_json(schedule)
-
-                    
                     confirmation_message = TextSendMessage(
                         text=f"{user_message} の予定を {schedule_datetime} に保存しました。"
                     )
