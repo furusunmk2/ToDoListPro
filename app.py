@@ -12,6 +12,7 @@ from dotenv import load_dotenv
 from datetime import datetime, timedelta, timezone
 import logging
 import os
+import json
 
 try:
     import google.generativeai as genai
@@ -29,9 +30,11 @@ logger = logging.getLogger(__name__)
 
 # データベースの設定
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///schedule.db")
+JSON_FILE = "schedules.json"
 engine = create_engine(DATABASE_URL)
 Base = declarative_base()
 
+# モデル定義
 class Schedule(Base):
     __tablename__ = 'schedules'
     id = Column(Integer, primary_key=True)
@@ -42,6 +45,42 @@ class Schedule(Base):
 
 Base.metadata.create_all(engine)
 Session = scoped_session(sessionmaker(bind=engine))
+
+# JSON保存と読み込み
+def save_to_json():
+    with Session() as session:
+        schedules = session.query(Schedule).all()
+        data = [
+            {
+                "id": schedule.id,
+                "user_id": schedule.user_id,
+                "message": schedule.message,
+                "scheduled_datetime": schedule.scheduled_datetime.isoformat(),
+                "created_at": schedule.created_at.isoformat()
+            }
+            for schedule in schedules
+        ]
+        with open(JSON_FILE, mode='w', encoding='utf-8') as file:
+            json.dump(data, file, indent=4, ensure_ascii=False)
+
+
+def load_from_json():
+    if not os.path.exists(JSON_FILE):
+        return
+
+    with open(JSON_FILE, mode='r', encoding='utf-8') as file:
+        data = json.load(file)
+        with Session() as session:
+            for entry in data:
+                schedule = Schedule(
+                    id=entry['id'],
+                    user_id=entry['user_id'],
+                    message=entry['message'],
+                    scheduled_datetime=datetime.fromisoformat(entry['scheduled_datetime']),
+                    created_at=datetime.fromisoformat(entry['created_at'])
+                )
+                session.merge(schedule)
+            session.commit()
 
 # LINEの設定
 LINE_CHANNEL_ACCESS_TOKEN = os.getenv("LINE_CHANNEL_ACCESS_TOKEN")
@@ -67,47 +106,16 @@ if not LINE_CHANNEL_ACCESS_TOKEN or not LINE_CHANNEL_SECRET:
 line_bot_api = LineBotApi(LINE_CHANNEL_ACCESS_TOKEN)
 handler = WebhookHandler(LINE_CHANNEL_SECRET)
 
+# アプリ起動時にJSONデータを読み込む
+load_from_json()
+
 def calculate_datetime_range():
-    """日時の初期値、最小値、最大値を計算する"""
     JST = timezone(timedelta(hours=9))
     now_jst = datetime.now(JST)
     initial_date = now_jst.replace(minute=0, second=0).strftime("%Y-%m-%dT%H:%M")
     min_date = (now_jst - timedelta(days=365)).strftime("%Y-%m-%dT%H:%M")
     max_date = (now_jst + timedelta(days=365)).strftime("%Y-%m-%dT%H:%M")
     return initial_date, min_date, max_date
-
-def generate_report_with_ai(prompt, model):
-    """Gemini APIを使用して日報を生成する"""
-    try:
-        response = model.generate_content(prompt)
-        
-        # レスポンス全体をデバッグ出力
-        print(f"Full AI Response: {response}")
-
-        # レスポンス解析
-        if response:
-            if hasattr(response, 'candidates') and len(response.candidates) > 0:
-                candidate = response.candidates[0]  # 最初の候補を取得
-                
-                # デバッグ: 候補の内容を確認
-                print(f"First Candidate: {candidate}")
-                
-                # フィールドを確認して取得
-                if isinstance(candidate, dict):  # 辞書形式の場合
-                    return candidate.get('content', {}).get('text', "テキストが見つかりません。").strip()
-                elif hasattr(candidate, 'content') and hasattr(candidate.content, 'parts'):
-                    return candidate.content.parts[0].text.strip()  # テキスト部分を取得
-                elif hasattr(candidate, 'text'):  # 古い形式
-                    return candidate.text.strip()
-                else:
-                    return "AI応答フォーマットが予期した形式ではありません。"
-            else:
-                return "候補が存在しませんでした。"
-        else:
-            return "AIからの応答が生成されませんでした。"
-    except Exception as e:
-        print(f"AI生成中にエラー: {e}")
-        return f"AI生成中にエラーが発生しました: {e}"
 
 @app.route("/callback", methods=['POST'])
 def callback():
@@ -124,7 +132,7 @@ def callback():
 
     return 'OK'
 
-# TextMessageイベントの処理
+# メッセージイベントの処理
 @handler.add(MessageEvent, message=TextMessage)
 def handle_message(event):
     user_message = event.message.text.strip()
@@ -134,138 +142,28 @@ def handle_message(event):
     if user_message == "予定確認" or user_message == "日報作成":
         action_data = "check_schedule" if user_message == "予定確認" else "generate_report"
         datetime_picker_action = DatetimePickerTemplateAction(
-            label="日付を選ぶにゃ",
-            data=f"action={action_data}&user_id={user_id}",
-            mode="datetime",
-            initial=initial_date,
-            max=max_date,
-            min=min_date
+            label="日付を選択", data=f"action={action_data}&user_id={user_id}", mode="datetime",
+            initial=initial_date, max=max_date, min=min_date
         )
         template_message = TemplateSendMessage(
             alt_text="日時選択メッセージ",
             template=ButtonsTemplate(
-                text="確認したい日はいつだにゃ？" if user_message == "予定確認" else "いつの日報が必要だにゃ？",
-                actions=[datetime_picker_action]
+                text="確認したい日を選んでください。", actions=[datetime_picker_action]
             )
         )
-        try:
-            line_bot_api.push_message(user_id, template_message)
-        except Exception as e:
-            logger.error(f"日時選択メッセージの送信エラー: {e}")
+        line_bot_api.push_message(user_id, template_message)
     else:
         datetime_picker_action = DatetimePickerTemplateAction(
-            label="日時を選ぶにゃ",
-            data=f"action=schedule&user_message={user_message}",
-            mode="datetime",
-            initial=initial_date,
-            max=max_date,
-            min=min_date
+            label="日時を選択", data=f"action=schedule&user_message={user_message}", mode="datetime",
+            initial=initial_date, max=max_date, min=min_date
         )
         template_message = TemplateSendMessage(
             alt_text="予定日時選択メッセージ",
             template=ButtonsTemplate(
-                text="その予定はいつの予定だにゃ？",
-                actions=[datetime_picker_action]
+                text="その予定の日時を選んでください。", actions=[datetime_picker_action]
             )
         )
-        try:
-            line_bot_api.push_message(user_id, template_message)
-        except Exception as e:
-            logger.error(f"日時選択メッセージの送信エラー: {e}")
-
-# Postbackイベントの処理
-@handler.add(PostbackEvent)
-def handle_postback(event):
-    data = event.postback.data
-    user_id = event.source.user_id
-    if "action=schedule" in data:
-        user_message = [part.split("=")[1] for part in data.split("&") if part.startswith("user_message=")][0]
-        schedule_datetime = event.postback.params.get('datetime', '不明')
-
-        if user_message and schedule_datetime != '不明':
-            with Session() as session:
-                try:
-                    schedule = Schedule(
-                        user_id=user_id,
-                        message=user_message,
-                        scheduled_datetime=datetime.fromisoformat(schedule_datetime)
-                    )
-                    session.add(schedule)
-                    session.commit()
-                    confirmation_message = TextSendMessage(
-                        text=f"{user_message} の予定を {schedule_datetime} に保存しました。"
-                    )
-                except Exception as e:
-                    session.rollback()
-                    confirmation_message = TextSendMessage(
-                        text=f"データベース保存中にエラーが発生しました: {e}"
-                    )
-        else:
-            confirmation_message = TextSendMessage(text="無効なデータが入力されました。")
-
-        try:
-            line_bot_api.reply_message(event.reply_token, confirmation_message)
-        except Exception as e:
-            logger.error(f"確認メッセージ送信時のエラー: {e}")
-
-    if "action=check_schedule" in data or "action=generate_report" in data:
-        selected_date_str = event.postback.params.get('datetime', '不明')
-        if selected_date_str != '不明':
-            selected_date = datetime.fromisoformat(selected_date_str).date()
-
-            with Session() as session:
-                schedules = session.query(Schedule).filter(
-                    Schedule.scheduled_datetime >= selected_date,
-                    Schedule.scheduled_datetime < selected_date + timedelta(days=1)
-                ).order_by(Schedule.scheduled_datetime).all()
-
-            if "action=check_schedule" in data:
-                schedule_text = "\n".join(
-                    [f"{schedule.scheduled_datetime.strftime('%H:%M')} - {schedule.message}" for schedule in schedules]
-                ) or "その日に予定はありません。"
-                response_message = f"📅 {selected_date.strftime('%Y年%m月%d日')} の予定一覧:\n{schedule_text}"
-            else:
-    # 明日のスケジュールを取得
-                tomorrow_date = selected_date + timedelta(days=3 if selected_date.weekday() == 4 else 1)  # 金曜日の場合、3日後（月曜日）を取得
-                tomorrow_schedules = session.query(Schedule).filter(
-                    Schedule.scheduled_datetime >= tomorrow_date,
-                    Schedule.scheduled_datetime < tomorrow_date + timedelta(days=1)
-                ).order_by(Schedule.scheduled_datetime).all()
-
-                report_text = "\n".join(
-                    [f"{schedule.scheduled_datetime.strftime('%H:%M')} - {schedule.message}" for schedule in schedules]
-                ) or f"{selected_date.strftime('%Y年%m月%d日')} に予定がないため、日報を生成できません。"
-                
-                report_text_tomorrow = "\n".join(
-                    [f"{schedule.scheduled_datetime.strftime('%H:%M')} - {schedule.message}" for schedule in tomorrow_schedules]
-                ) or f"{tomorrow_date.strftime('%Y年%m月%d日')} に予定がないため、スケジュールがありません。"
-
-                if gemini_pro:
-                    prompt = f"""
-            日付: {selected_date.strftime('%Y年%m月%d日')}
-            勤務時間: 09:00 - 17:30
-            タスク: {report_text}
-            課題:
-            成果:
-            改善点:
-            その他:
-            明日のスケジュール: {report_text_tomorrow}
-                    """
-                    response_message = generate_report_with_ai(prompt, gemini_pro)
-                else:
-                    response_message = report_text
-
-
-
-
-            response_message.replace("*","")
-            confirmation_message = TextSendMessage(text=response_message)
-        else:
-            confirmation_message = TextSendMessage(text="日付の取得に失敗しました。")
-        try:
-            line_bot_api.reply_message(event.reply_token, confirmation_message)
-        except Exception as e:
-            logger.error(f"確認メッセージ送信時のエラー: {e}")
+        line_bot_api.push_message(user_id, template_message)
 
 if __name__ == "__main__":
     port = int(os.getenv("PORT", 5000))
